@@ -1,0 +1,31 @@
+---
+
+########################################
+#       VPC creation vars              # 
+########################################
+aws_access_key:         ""
+aws_secret_key:         ""
+aws_region:             "us-east-1"
+
+vpc_name:               "ans_vpc"
+vpc_cidr_block:         "172.16.0.0/16"
+
+manager_node_ip:                  "54.173.56.162"
+
+public_subnet_cidr:   "172.16.3.0/24"
+private_subnet_cidr:  "172.16.4.0/24"
+#########################################
+#       EC2 boxes creation vars         #
+#########################################
+
+vpc_ec2_key_name:       "admin"
+vpc_ec2_image_id:       "ami-43a15f3e"
+vpc_ec2_instance_type:  "t2.micro"
+vpc_ec2_instance_tag_db: "{{ database }}"
+vpc_ec2_instance_tag_as: "{{ AppServer }}"
+vpc_ec2_wait:           "yes"
+vpc_ec2_wait_timeout:   "500"
+vpc_ec2_count:          "3"
+vpc_ec2_monitoring:     "yes"
+vpc_ec2_public_ip_as:   "yes"
+vpc_ec2_public_ip_db:   "no"

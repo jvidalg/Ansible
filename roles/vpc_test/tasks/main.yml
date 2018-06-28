@@ -1,0 +1,175 @@
+---
+- name:               "Create VPC"
+  ec2_vpc_net:
+    name:             "{{ vpc_name }}"
+    cidr_block:       "{{ vpc_cidr_block }}"
+    region:           "{{ aws_region }}"
+    aws_access_key:   "{{ aws_access_key }}"
+    aws_secret_key:   "{{ aws_secret_key }}"
+    state:            "present"
+  register: my_vpc
+
+- name:               VPC ID to vpc_id
+  set_fact:
+    vpc_id:           "{{ my_vpc.vpc.id }}"
+
+
+- name:               Create Public Subnet
+  ec2_vpc_subnet:
+    state:            "present"
+    aws_access_key:   "{{ aws_access_key }}"
+    aws_secret_key:   "{{ aws_secret_key }}"
+    vpc_id:           "{{ vpc_id }}"
+    cidr:             "{{ public_subnet_cidr }}"
+    az:               "{{ aws_region }}a"
+    region:           "{{ aws_region }}"
+    resource_tags:
+      Name:           "Public Subnet"
+  register: vpc_public_subnet_object
+
+- name:               Public subnet ID to vpc_public_subnet_id
+  set_fact:
+    public_subnet_id: "{{ vpc_public_subnet_object.subnet.id }}"
+
+- name:               Create Private Subnet
+  ec2_vpc_subnet:
+    state:            "present"
+    aws_access_key:   "{{ aws_access_key }}"
+    aws_secret_key:   "{{ aws_secret_key }}"
+    vpc_id:           "{{ vpc_id }}"
+    cidr:             "{{ private_subnet_cidr }}"
+    az:               "{{ aws_region }}a"
+    region:           "{{ aws_region }}"
+    resource_tags:
+      Name:           "Private Subnet"
+  register:           vpc_private_subnet_object
+
+- name:               Privat subnet ID to vpc_private_subnet_id
+  set_fact:
+    private_subnet_id: "{{ vpc_private_subnet_object.subnet.id }}"
+
+
+- name:                 Create Internet Gateway for VPC
+  ec2_vpc_igw:
+    vpc_id:             "{{ vpc_id }}"
+    region:             "{{ aws_region }}"
+    aws_access_key:     "{{ aws_access_key }}"
+    aws_secret_key:     "{{ aws_secret_key }}"
+    state:              "present"
+  register:             vpc_igw_public
+
+- name:                 Internet Gateway ID to igw_id
+  set_fact:
+    igw_id:             "{{ vpc_igw_public.gateway_id }}"
+
+
+- name:               Public subnet route table
+  ec2_vpc_route_table:
+    vpc_id:             "{{ vpc_id }}"
+    region:             "{{ aws_region }}"
+    aws_access_key:     "{{ aws_access_key }}"
+    aws_secret_key:     "{{ aws_secret_key }}"
+    tags:
+      Name:             "Public subnet demo"
+    subnets:
+      - "{{ public_subnet_id }}"
+    routes:
+      - dest:           "0.0.0.0/0"
+        gateway_id:     "{{ igw_id }}"
+
+- name:                 Setup private subnet route table
+  ec2_vpc_route_table:
+    vpc_id:             "{{ vpc_id }}"
+    region:             "{{ aws_region }}"
+    aws_access_key:     "{{ aws_access_key }}"
+    aws_secret_key:     "{{ aws_secret_key }}"
+    tags:
+      Name:             "Private subnet demo"
+    subnets:
+      - "{{ private_subnet_id }}"
+    routes:
+      - dest:           "172.16.0.0/16"
+
+
+- name:                 Public Security Group
+  ec2_group:
+    name:               "Public_security_group"
+    aws_access_key:     "{{ aws_access_key }}"
+    aws_secret_key:     "{{ aws_secret_key }}"
+    description:        "Public security group vpc demo"
+    vpc_id:             "{{ vpc_id }}"
+    region:             "{{ aws_region }}"
+    rules:
+      - proto:          "tcp"
+        from_port:      "22"
+        to_port:        "22"
+        cidr_ip:        "0.0.0.0/0"
+    rules:
+      - proto:          "tcp"
+        from_port:      "80"
+        to_port:        "80"
+        cidr_ip:        "0.0.0.0/0"
+
+    rules_egress:
+      - proto:          "all"
+        cidr_ip:        "0.0.0.0/0"
+  register:             public_sg
+
+- name:                 Set Main SG ID
+  set_fact:
+    public_sg_id:       "{{ public_sg.group_id }}"
+    public_sg_name:     "{{ public_sg.group_name }}" 
+
+- name:                 Private Security Group
+  ec2_group:
+    name:               "Private_security_group"
+    aws_access_key:     "{{ aws_access_key }}"
+    aws_secret_key:     "{{ aws_secret_key }}"
+    description:        "Private security group demo"
+    vpc_id:             "{{ vpc_id }}"
+    region:             "{{ aws_region }}"
+    rules:
+      - proto:          "tcp"
+        from_port:      "22"
+        to_port:        "22"
+        group_id:       "{{ public_sg_id }}"
+  register:             private_sg
+- name:
+  set_fact:
+    private_sg_name:    "{{ private_sg.group_name }}"
+
+- name:                 Ansible instance AS
+  ec2:
+    key_name:           "{{ vpc_ec2_key_name }}"
+    group:              "{{ public_sg_name }}"
+    region:             "{{ aws_region }}"
+    instance_type:      "{{ vpc_ec2_instance_type }}"
+    image:              "{{ vpc_ec2_image_id }}"
+    wait:               "{{ vpc_ec2_wait }}"
+    wait_timeout:       "{{ vpc_ec2_wait_timeout }}"
+    count:              "{{ vpc_ec2_count }}"
+#    instance_tags:      
+#      server_type:             "{{ vpc_ec2_instance_tag_as }}"
+    monitoring:         "{{ vpc_ec2_monitoring }}"
+    vpc_subnet_id:      "{{ vpc_id }}"
+    vpc_subnet_id:      "{{ public_subnet_id }}"
+    assign_public_ip:   "{{ vpc_ec2_public_ip_as }}"
+
+- name:                 Ansible instance DB
+  ec2:
+    key_name:           "{{ vpc_ec2_key_name }}"
+    group:              "{{ private_sg_name }}"
+    region:             "{{ aws_region }}"
+    instance_type:      "{{ vpc_ec2_instance_type }}"
+    image:              "{{ vpc_ec2_image_id }}"
+    wait:               "{{ vpc_ec2_wait }}"
+    wait_timeout:       "{{ vpc_ec2_wait_timeout }}"
+    count:              "{{ vpc_ec2_count }}"
+#    instance_tags:
+#      server_type:             "{{ vpc_ec2_instance_tag_db }}"
+    monitoring:         "{{ vpc_ec2_monitoring }}"
+    vpc_subnet_id:      "{{ vpc_id }}"
+    vpc_subnet_id:      "{{ private_subnet_id }}"
+    assign_public_ip:   "{{ vpc_ec2_public_ip_db }}"
+
+
